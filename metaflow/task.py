@@ -20,11 +20,23 @@ from .exception import (
 )
 from .unbounded_foreach import UBF_CONTROL
 from .util import all_equal, get_username, resolve_identity, unicode_type
-from .current import current
+from .metaflow_current import current
 from metaflow.tracing import get_trace_id
-from collections import namedtuple
+from metaflow.util import namedtuple_with_defaults
 
-ForeachFrame = namedtuple("ForeachFrame", ["step", "var", "num_splits", "index"])
+foreach_frame_field_list = [
+    ("step", str),
+    ("var", str),
+    ("num_splits", int),
+    ("index", int),
+    ("value", str),
+]
+ForeachFrame = namedtuple_with_defaults(
+    "ForeachFrame", foreach_frame_field_list, (None,) * (len(foreach_frame_field_list))
+)
+
+# Maximum number of characters of the foreach path that we store in the metadata.
+MAX_FOREACH_PATH_LENGTH = 256
 
 
 class MetaflowTask(object):
@@ -59,7 +71,6 @@ class MetaflowTask(object):
             step_function(input_obj)
 
     def _init_parameters(self, parameter_ds, passdown=True):
-
         cls = self.flow.__class__
 
         def _set_cls_var(_, __):
@@ -188,10 +199,10 @@ class MetaflowTask(object):
                     if join_type == "foreach":
                         top = i["_foreach_stack"][-1]
                         bottom = i["_foreach_stack"][:-1]
-                        # the topmost indices in the stack are all
-                        # different naturally, so ignore them in the
+                        # the topmost indices and values in the stack are
+                        # all different naturally, so ignore them in the
                         # assertion
-                        yield bottom + [top._replace(index=0)]
+                        yield bottom + [top._replace(index=0, value=0)]
                     else:
                         yield i["_foreach_stack"]
 
@@ -243,12 +254,18 @@ class MetaflowTask(object):
                     "specified." % step_name
                 )
 
+            split_value = (
+                inputs[0]["_foreach_values"][split_index]
+                if not inputs[0].is_none("_foreach_values")
+                else None
+            )
             # push a new index after a split to the stack
             frame = ForeachFrame(
                 step_name,
                 inputs[0]["_foreach_var"],
                 inputs[0]["_foreach_num_splits"],
                 split_index,
+                split_value,
             )
 
             stack = inputs[0]["_foreach_stack"]
@@ -378,7 +395,6 @@ class MetaflowTask(object):
         retry_count,
         max_user_code_retries,
     ):
-
         if run_id and task_id:
             self.metadata.register_run_id(run_id)
             self.metadata.register_task_id(run_id, step_name, task_id, retry_count)
@@ -434,13 +450,6 @@ class MetaflowTask(object):
                 )
             )
 
-        self.metadata.register_metadata(
-            run_id,
-            step_name,
-            task_id,
-            metadata,
-        )
-
         step_func = getattr(self.flow, step_name)
         decorators = step_func.decorators
 
@@ -462,6 +471,46 @@ class MetaflowTask(object):
 
             # 3. initialize foreach state
             self._init_foreach(step_name, join_type, inputs, split_index)
+
+            # Add foreach stack to metadata of the task
+
+            foreach_stack = (
+                self.flow._foreach_stack
+                if hasattr(self.flow, "_foreach_stack") and self.flow._foreach_stack
+                else []
+            )
+
+            foreach_stack_formatted = []
+            current_foreach_path_length = 0
+            for frame in foreach_stack:
+                if not (frame.var and frame.value):
+                    break
+
+                foreach_step = "%s=%s" % (frame.var, frame.value)
+                if (
+                    current_foreach_path_length + len(foreach_step)
+                    > MAX_FOREACH_PATH_LENGTH
+                ):
+                    break
+                current_foreach_path_length += len(foreach_step)
+                foreach_stack_formatted.append(foreach_step)
+
+            if foreach_stack_formatted:
+                metadata.append(
+                    MetaDatum(
+                        field="foreach-stack",
+                        value=foreach_stack_formatted,
+                        type="foreach-stack",
+                        tags=metadata_tags,
+                    )
+                )
+
+        self.metadata.register_metadata(
+            run_id,
+            step_name,
+            task_id,
+            metadata,
+        )
 
         # 4. initialize the current singleton
         current._set_env(
@@ -561,7 +610,6 @@ class MetaflowTask(object):
                     )
 
             for deco in decorators:
-
                 deco.task_pre_step(
                     step_name,
                     output,
