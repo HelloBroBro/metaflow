@@ -17,7 +17,7 @@ from .exception import (
 )
 from .graph import FlowGraph
 from .unbounded_foreach import UnboundedForeachInput
-from .metaflow_config import INCLUDE_FOREACH_STACK
+from .metaflow_config import INCLUDE_FOREACH_STACK, MAXIMUM_FOREACH_VALUE_CHARS
 
 # For Python 3 compatibility
 try:
@@ -27,6 +27,8 @@ except NameError:
 
 
 from .datastore.inputs import Inputs
+
+INTERNAL_ARTIFACTS_SET = set(["_foreach_values"])
 
 
 class InvalidNextException(MetaflowException):
@@ -446,7 +448,9 @@ class FlowSpec(object):
                 available_vars = (
                     (var, sha)
                     for var, sha in inp._datastore.items()
-                    if (var not in exclude) and (not hasattr(self, var))
+                    if (var not in exclude)
+                    and (not hasattr(self, var))
+                    and (var not in INTERNAL_ARTIFACTS_SET)
                 )
             for var, sha in available_vars:
                 _, previous_sha = to_merge.setdefault(var, (inp, sha))
@@ -529,7 +533,7 @@ class FlowSpec(object):
             )
 
         value = item if _is_primitive_type(item) else reprlib.Repr().repr(item)
-        return basestring(value)
+        return basestring(value)[:MAXIMUM_FOREACH_VALUE_CHARS]
 
     def next(self, *dsts: Callable[..., None], **kwargs) -> None:
         """
