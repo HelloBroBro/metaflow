@@ -20,6 +20,7 @@ from .exception import (
 )
 from .unbounded_foreach import UBF_CONTROL
 from .util import all_equal, get_username, resolve_identity, unicode_type
+from .clone_util import clone_task_helper
 from .metaflow_current import current
 from metaflow.tracing import get_trace_id
 from metaflow.util import namedtuple_with_defaults
@@ -284,70 +285,43 @@ class MetaflowTask(object):
         task_id,
         clone_origin_task,
         retry_count,
-        wait_only=False,
     ):
         if not clone_origin_task:
             raise MetaflowInternalError(
                 "task.clone_only needs a valid clone_origin_task value."
             )
-        if wait_only:
-            # In this case, we are actually going to wait for the clone to be done
-            # by someone else. To do this, we just get the task_datastore in "r" mode
-            while True:
-                try:
-                    ds = self.flow_datastore.get_task_datastore(
-                        run_id, step_name, task_id
-                    )
-                    if not ds["_task_ok"]:
-                        raise MetaflowInternalError(
-                            "Externally cloned task did not succeed"
-                        )
-                    break
-                except DataException:
-                    # No need to get fancy with the sleep here.
-                    time.sleep(5)
-            return
+        origin_run_id, _, origin_task_id = clone_origin_task.split("/")
+
+        msg = {
+            "task_id": task_id,
+            "msg": "Cloning task from {}/{}/{}/{} to {}/{}/{}/{}".format(
+                self.flow.name,
+                origin_run_id,
+                step_name,
+                origin_task_id,
+                self.flow.name,
+                run_id,
+                step_name,
+                task_id,
+            ),
+            "step_name": step_name,
+            "run_id": run_id,
+            "flow_name": self.flow.name,
+            "ts": round(time.time()),
+        }
+        self.event_logger.log(msg)
         # If we actually have to do the clone ourselves, proceed...
-        # 1. initialize output datastore
-        output = self.flow_datastore.get_task_datastore(
-            run_id, step_name, task_id, attempt=0, mode="w"
-        )
-
-        output.init_task()
-
-        origin_run_id, origin_step_name, origin_task_id = clone_origin_task.split("/")
-        # 2. initialize origin datastore
-        origin = self.flow_datastore.get_task_datastore(
-            origin_run_id, origin_step_name, origin_task_id
-        )
-        metadata_tags = ["attempt_id:{0}".format(retry_count)]
-        output.clone(origin)
-        self.metadata.register_metadata(
+        clone_task_helper(
+            self.flow.name,
+            origin_run_id,
             run_id,
             step_name,
+            origin_task_id,
             task_id,
-            [
-                MetaDatum(
-                    field="origin-task-id",
-                    value=str(origin_task_id),
-                    type="origin-task-id",
-                    tags=metadata_tags,
-                ),
-                MetaDatum(
-                    field="origin-run-id",
-                    value=str(origin_run_id),
-                    type="origin-run-id",
-                    tags=metadata_tags,
-                ),
-                MetaDatum(
-                    field="attempt",
-                    value=str(retry_count),
-                    type="attempt",
-                    tags=metadata_tags,
-                ),
-            ],
+            self.flow_datastore,
+            self.metadata,
+            attempt_id=retry_count,
         )
-        output.done()
 
     def _finalize_control_task(self):
         # Update `_transition` which is expected by the NativeRuntime.
