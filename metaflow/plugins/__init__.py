@@ -122,9 +122,17 @@ SECRETS_PROVIDERS_DESC = [
         ".aws.secrets_manager.aws_secrets_manager_secrets_provider.AwsSecretsManagerSecretsProvider",
     ),
     (
+        "gcp-secret-manager",
+        ".gcp.gcp_secret_manager_secrets_provider.GcpSecretManagerSecretsProvider",
+    ),
+    (
         "az-key-vault",
         ".azure.azure_secret_manager_secrets_provider.AzureKeyVaultSecretsProvider",
     ),
+]
+
+GCP_CLIENT_PROVIDERS_DESC = [
+    ("gcp-default", ".gcp.gs_storage_client_factory.GcpDefaultClientProvider")
 ]
 
 AZURE_CLIENT_PROVIDERS_DESC = [
@@ -154,6 +162,7 @@ SIDECARS.update(MONITOR_SIDECARS)
 AWS_CLIENT_PROVIDERS = resolve_plugins("aws_client_provider")
 SECRETS_PROVIDERS = resolve_plugins("secrets_provider")
 AZURE_CLIENT_PROVIDERS = resolve_plugins("azure_client_provider")
+GCP_CLIENT_PROVIDERS = resolve_plugins("gcp_client_provider")
 
 from .cards.card_modules import MF_EXTERNAL_CARDS
 

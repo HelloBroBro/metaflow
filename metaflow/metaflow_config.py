@@ -26,6 +26,7 @@ DEFAULT_METADATA = from_conf("DEFAULT_METADATA", "local")
 DEFAULT_MONITOR = from_conf("DEFAULT_MONITOR", "nullSidecarMonitor")
 DEFAULT_PACKAGE_SUFFIXES = from_conf("DEFAULT_PACKAGE_SUFFIXES", ".py,.R,.RDS")
 DEFAULT_AWS_CLIENT_PROVIDER = from_conf("DEFAULT_AWS_CLIENT_PROVIDER", "boto3")
+DEFAULT_GCP_CLIENT_PROVIDER = from_conf("DEFAULT_GCP_CLIENT_PROVIDER", "gcp-default")
 DEFAULT_SECRETS_BACKEND_TYPE = from_conf("DEFAULT_SECRETS_BACKEND_TYPE")
 DEFAULT_SECRETS_ROLE = from_conf("DEFAULT_SECRETS_ROLE")
 
@@ -143,6 +144,15 @@ DATATOOLS_LOCALROOT = from_conf(
 
 # Secrets Backend - AWS Secrets Manager configuration
 AWS_SECRETS_MANAGER_DEFAULT_REGION = from_conf("AWS_SECRETS_MANAGER_DEFAULT_REGION")
+
+# Secrets Backend - GCP Secrets name prefix. With this, users don't have
+# to specify the full secret name in the @secret decorator.
+#
+# Note that it makes a difference whether the prefix ends with a slash or not
+# E.g. if secret name passed to @secret decorator is mysecret:
+# - "projects/1234567890/secrets/" -> "projects/1234567890/secrets/mysecret"
+# - "projects/1234567890/secrets/foo-" -> "projects/1234567890/secrets/foo-mysecret"
+GCP_SECRET_MANAGER_PREFIX = from_conf("GCP_SECRET_MANAGER_PREFIX")
 
 # Secrets Backend - Azure Key Vault prefix. With this, users don't have to
 # specify the full https:// vault url in the @secret decorator.
@@ -331,6 +341,9 @@ KUBERNETES_DISK = from_conf("KUBERNETES_DISK", None)
 ARGO_WORKFLOWS_KUBERNETES_SECRETS = from_conf("ARGO_WORKFLOWS_KUBERNETES_SECRETS", "")
 ARGO_WORKFLOWS_ENV_VARS_TO_SKIP = from_conf("ARGO_WORKFLOWS_ENV_VARS_TO_SKIP", "")
 
+KUBERNETES_JOBSET_GROUP = from_conf("KUBERNETES_JOBSET_GROUP", "jobset.x-k8s.io")
+KUBERNETES_JOBSET_VERSION = from_conf("KUBERNETES_JOBSET_VERSION", "v1alpha2")
+
 ##
 # Argo Events Configuration
 ##
@@ -469,6 +482,7 @@ def get_pinned_conda_libs(python_version, datastore_type):
     elif datastore_type == "gs":
         pins["google-cloud-storage"] = ">=2.5.0"
         pins["google-auth"] = ">=2.11.0"
+        pins["google-cloud-secret-manager"] = ">=2.10.0"
     elif datastore_type == "local":
         pass
     else:
