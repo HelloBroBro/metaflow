@@ -6,6 +6,7 @@ import shlex
 import sys
 from collections import defaultdict
 from hashlib import sha1
+from math import inf
 
 from metaflow import JSONType, current
 from metaflow.decorators import flow_decorators
@@ -901,7 +902,9 @@ class ArgoWorkflows(object):
                                 "argo-{{workflow.name}}/%s/{{tasks.%s.outputs.parameters.task-id}}"
                                 % (n, self._sanitize(n))
                                 for n in node.in_funcs
-                            ]
+                            ],
+                            # NOTE: We set zlibmin to infinite because zlib compression for the Argo input-paths breaks template value substitution.
+                            zlibmin=inf,
                         )
                     )
                 ]
@@ -2154,7 +2157,8 @@ class ArgoWorkflows(object):
                                                 # everything within the body.
                                                 # NOTE: We need the conditional logic in order to successfully fall back to the default value
                                                 # when the event payload does not contain a key for a parameter.
-                                                data_template='{{ if (hasKey $.Input.body.payload "%s") }}{{- (.Input.body.payload.%s | toJson) -}}{{- else -}}{{ (fail "use-default-instead") }}{{- end -}}'
+                                                # NOTE: Keys might contain dashes, so use the safer 'get' for fetching the value
+                                                data_template='{{ if (hasKey $.Input.body.payload "%s") }}{{- (get $.Input.body.payload "%s" | toJson) -}}{{- else -}}{{ (fail "use-default-instead") }}{{- end -}}'
                                                 % (v, v),
                                                 # Unfortunately the sensor needs to
                                                 # record the default values for
